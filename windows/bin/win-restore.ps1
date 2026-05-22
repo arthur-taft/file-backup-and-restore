@@ -1,5 +1,5 @@
 # PowerShell User Data Restore Script (USB → New Machine)
-# Copyright (c) 2025 Arthur Taft
+# Copyright (c) 2026 Arthur Taft
 $username = $env:USERNAME
 $userRoot = "C:\Users\$username"
 
@@ -8,53 +8,46 @@ $usb = Get-Volume | Where-Object { $_.DriveType -eq 'Removable' -and $_.DriveLet
 if (-not $usb) { Write-Error "No USB drive found!"; exit 1 }
 
 $usbRoot = "$($usb.DriveLetter):\$username"
+$usbLocalAppData = "$usbRoot\AppData\Local"
 
-# Check for chrome profiles
-$chromeProfileCheck = Test-Path "$usbRoot\AppData\Google\Chrome\User Data\Profile 1"
-
-$chromeProfiles = @()
-
-# If a user has one chrome profile, it's likely that they have more...
-# Iterate over chrome profiles until there are none left
-if ($chromeProfileCheck -eq $true) {
-    $i = 1
-    do {
-        if ($i -ne 1) {
-            $chromeProfiles += @{ src = "$chromeProfile"; dest = "$env:LOCALAPPDATA\Chrome Profile $i" }
-        }
-        $chromeProfile = Join-Path -Path "$usbRoot\AppData\Google\Chrome\User Data\Profile " -ChildPath "$i"
-        $chromeProfileCheck = Test-Path "$chromeProfile"
-    } while ($chromeProfileCheck -eq $true)
-}
-
-# Check for Edge Profiles
-$edgeProfileCheck = Test-Path "$usbRoot\AppData\Microsoft\Edge\User Data\Profile 1"
-
-$edgeProfiles = @()
-
-# If a user has one edge profile, it's likely that they have more...
-# Iterate over edge profiles until there are none left
-if ($edgeProfileCheck -eq $true) {
-    $j = 1
-    do {
-        if ($j -ne 1) {
-            $edgeProfiles += @{ src = "$edgeProfile"; dest = "$env:LOCALAPPDATA\Edge Profile $j" }
-        }
-        $edgeProfile = Join-Path -Path "$usbRoot\AppData\Microsoft\Edge\User Data\Profile " -ChildPath "$j"
-        $edgeProfileCheck = Test-Path "$edgeProfile"
-    } while ($edgeProfileCheck -eq $true)
-}
-
-# Check for firefox Profiles
-
-$firefoxProfileCheck = Test-Path -Path "$usbRoot\AppData\Mozilla\Firefox\Profiles\*.default-release"
-if ($firefoxProfileCheck -eq $true) {
-    $fetchedFirefoxProfiles = Get-ChildItem "$usbRoot\AppData\Mozilla\Firefox\Profiles\*.default-release" -Directory
-    $fetchedFirefoxProfile = $fetchedFirefoxProfiles[0]
-    $firefoxSplitPath = Split-Path -Path $fetchedFirefoxProfile -Leaf
-    $firefoxProfiles = @(
-        @{ src = "$fetchedFirefoxProfile"; dest = "$env:APPDATA\Mozilla\Firefox\Profiles\$firefoxSplitPath"}
+function Get-BrowserProfiles {
+    param (
+        $browser,
+        $profileStr
     )
+
+    # Chrome and Edge are both Chromium browsers,
+    # so they share the same profile path
+    if (($browser -eq "chrome") -or ($browser -eq "edge")) {
+        $profileCheck = Test-Path "$profileStr 1"
+    # Firefox is special
+    } elseif ($browser -eq "firefox") {
+        $profileCheck = Test-Path "$profileStr\*.default-release"
+    }
+
+    $browserProfiles = @()
+
+    
+    if (($profileCheck -eq $true) -and (($browser -eq "chrome") -or ($browser -eq "edge"))) {
+        $i = 1
+        do {
+            if ($i -ne 1) {
+                $browserProfiles += @{ src = "$profile"; dest = "$browser Profile $i" }
+            }
+            $browserProfile = Join-Path -Path "$profileStr " -ChildPath "$i"
+            $browserProfileCheck = Test-Path "$browserProfile"
+        } while ($browserProfileCheck -eq $true)
+    } elseif (($profileCheck -eq $true) -and ($browser -eq "firefox")) {
+        # Firefox likes to be fun with creating profiles,
+        # so we have to do some fun logic to grab them all
+        $fetchedFirefoxProfiles = Get-ChildItem "$profileStr\*.default-release" -Directory
+        $fetchedFirefoxProfile = $fetchedFirefoxProfiles[0]
+        $firefoxSplitPath = Split-Path -Path $fetchedFirefoxProfile -Leaf
+        $browserProfiles = @(
+            @{ src = "$fetchedFirefoxProfile"; dest = "$\$firefoxSplitPath"}
+        )
+    }
+    return $browserProfiles
 }
 
 # List of folders to restore
@@ -67,11 +60,14 @@ $targets = @(
     @{ src = "$usbRoot\Music"; dest = "$userRoot\Music" }
 )
 
-$targets += $chromeProfiles
+# Check for chrome profiles
+$targets += Get-BrowserProfiles "chrome" "$usbLocalAppData\Google\Chrome\User Data\Profile"
 
-$targets += $edgeProfiles
+# Check for edge profiles
+$targets += Get-BrowserProfiles "edge" "$usbLocalAppData\Microsoft\Edge\User Data\Profile"
 
-$targets += $firefoxProfiles
+# Check for firefox profiles
+$targets += Get-BrowserProfiles "firefox" "$usbLocalAppData\Mozilla\Firefox\Profiles"
 
 # Get logical processor count to saturate USB
 $threads = (Get-CimInstance -ClassName Win32_Processor).NumberOfLogicalProcessors

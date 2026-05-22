@@ -1,7 +1,47 @@
 # PowerShell USB 3.2 Saturation Backup Script
-# Copyright (c) 2025 Arthur Taft
+# Copyright (c) 2026 Arthur Taft
 $username = $env:USERNAME
 $sourceRoot = "C:\Users\$username"
+
+function Get-BrowserProfiles {
+    param (
+        $browser,
+        $profileStr
+    )
+
+    # Chrome and Edge are both Chromium browsers,
+    # so they share the same profile path
+    if (($browser -eq "chrome") -or ($browser -eq "edge")) {
+        $profileCheck = Test-Path "$profileStr 1"
+    # Firefox is special
+    } elseif ($browser -eq "firefox") {
+        $profileCheck = Test-Path "$profileStr\*.default-release"
+    }
+
+    $browserProfiles = @()
+
+    
+    if (($profileCheck -eq $true) -and (($browser -eq "chrome") -or ($browser -eq "edge"))) {
+        $i = 1
+        do {
+            if ($i -ne 1) {
+                $browserProfiles += @{ src = "$profile"; dest = "$browser Profile $i" }
+            }
+            $browserProfile = Join-Path -Path "$profileStr " -ChildPath "$i"
+            $browserProfileCheck = Test-Path "$browserProfile"
+        } while ($browserProfileCheck -eq $true)
+    } elseif (($profileCheck -eq $true) -and ($browser -eq "firefox")) {
+        # Firefox likes to be fun with creating profiles,
+        # so we have to do some fun logic to grab them all
+        $fetchedFirefoxProfiles = Get-ChildItem "$profileStr\*.default-release" -Directory
+        $fetchedFirefoxProfile = $fetchedFirefoxProfiles[0]
+        $firefoxSplitPath = Split-Path -Path $fetchedFirefoxProfile -Leaf
+        $browserProfiles = @(
+            @{ src = "$fetchedFirefoxProfile"; dest = "$\$firefoxSplitPath"}
+        )
+    }
+    return $browserProfiles
+}
 
 # Detect first mounted USB drive
 $usb = Get-Volume | Where-Object { $_.DriveType -eq 'Removable' -and $_.DriveLetter } | Select-Object -First 1
@@ -9,55 +49,6 @@ if (-not $usb) { Write-Error "No USB drive found!"; exit 1 }
 
 $destRoot = "$($usb.DriveLetter):\$username"
 New-Item -Path $destRoot -ItemType Directory -Force | Out-Null
-
-# Check for chrome profiles
-$chromeProfileCheck = Test-Path "$env:LOCALAPPDATA\Google\Chrome\User Data\Profile 1"
-
-$chromeProfiles = @()
-
-# If a user has one chrome profile, it's likely that they have more...
-# Iterate over chrome profiles until there are none left
-if ($chromeProfileCheck -eq $true) {
-    $i = 1
-    do {
-        if ($i -ne 1) {
-            $chromeProfiles += @{ src = "$chromeProfile"; dest = "Chrome Profile $i" }
-        }
-        $chromeProfile = Join-Path -Path "$env:LOCALAPPDATA\Google\Chrome\User Data\Profile " -ChildPath "$i"
-        $chromeProfileCheck = Test-Path "$chromeProfile"
-    } while ($chromeProfileCheck -eq $true)
-}
-
-# Check for Edge Profiles
-$edgeProfileCheck = Test-Path "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Profile 1"
-
-$edgeProfiles = @()
-
-# If a user has one edge profile, it's likely that they have more...
-# Iterate over edge profiles until there are none left
-if ($edgeProfileCheck -eq $true) {
-    $j = 1
-    do {
-        if ($j -ne 1) {
-            $edgeProfiles += @{ src = "$edgeProfile"; dest = "Edge Profile $j" }
-        }
-        $edgeProfile = Join-Path -Path "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Profile " -ChildPath "$j"
-        $edgeProfileCheck = Test-Path "$edgeProfile"
-    } while ($edgeProfileCheck -eq $true)
-}
-
-# Check for firefox Profiles
-$firefoxProfileCheck = Test-Path "$usbRoot\AppData\Mozilla\Firefox\Profiles\*.default-release"
-
-if ($firefoxProfileCheck -eq $true) {
-    $fetchedFirefoxProfiles = Get-ChildItem "$usbRoot\AppData\Mozilla\Firefox\Profiles\*.default-release" -Directory
-    $fetchedFirefoxProfile = $fetchedFirefoxProfiles[0]
-    $firefoxSplitPath = Split-Path -Path $fetchedFirefoxProfile -Leaf
-    $firefoxProfiles = @(
-        @{ src = "$fetchedFirefoxProfile"; dest = "$env:APPDATA\Mozilla\Firefox\Profiles\$firefoxSplitPath"}
-    )
-}
-
 
 # List of folders to backup: [ Source Folder, Destination Subfolder ]
 $targets = @(
@@ -69,13 +60,22 @@ $targets = @(
     @{ src = "$sourceRoot\Music"; dest = "Music" }
 )
 
-$targets += $chromeProfiles
+# Check for chrome profiles
+$targets += Get-BrowserProfiles "chrome" "$env:LOCALAPPDATA\Google\Chrome\User Data\Profile"
 
-$targets += $edgeProfiles
+# Check for edge profiles
+$targets += Get-BrowserProfiles "edge" "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Profile"
 
-$targets += $firefoxProfiles
+# Check for firefox profiles
+$targets += Get-BrowserProfiles "firefox" "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles"
 
-# Get number of threads to use in copy operation
+foreach ($target in $targets) {
+    foreach ($key in $target.Keys) {
+        $message = '{0}, {1}' -f $key, $target[$key]
+        Write-Output $message
+    }
+}
+
 $threads = (Get-CimInstance -ClassName Win32_Processor).NumberOfLogicalProcessors
 
 # Robocopy options

@@ -23,4 +23,4 @@ If you are trying to back up user data that is hundreds of gigabytes in size, th
 Obviously your biggest limitation in this regard will be the I/O buffer, but regardless there is still a major performance increase.
 
 ### Legal Stuff
-Copyright (c) 2025 Arthur Taft
+Copyright (c) 2026 Arthur Taft

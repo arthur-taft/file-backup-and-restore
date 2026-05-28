@@ -242,7 +242,7 @@ while ($running) {
     $menuItems = @(
         "Start Backup Operation ($selectedCount items staged)"
         "Configure Backup Locations"
-        "Toggle Pre-Flight Large File Audit (5GB+) [$largeFileAuditStatus]"
+        "Toggle Large File Audit (5GB+) [$largeFileAuditStatus]"
         "Toggle Post-Copy Size Auditing [$sizeCheckStatus]"
         "Preview Destination Mapping Path"
         "Change Target Drive Selection"
@@ -315,18 +315,63 @@ while ($running) {
         }
         
         "Preview Destination Mapping Path" {
-            Clear-Host
-            Write-Host "=== Dynamic Backup Path Blueprint ===" -ForegroundColor Yellow
-            foreach ($item in $backupItems) {
-                $status = if ($item.Enabled) { "ACTIVE " } else { "SKIPPED" }
-                $color  = if ($item.Enabled) { "Cyan" } else { "DarkGray" }
-                Write-Host " [$status] Target: $($item.Name)" -ForegroundColor $color
-                Write-Host "          From:   $($item.Src)" -ForegroundColor Gray
-                Write-Host "          To:     $destRoot\$($item.Dest)" -ForegroundColor Gray
-                Write-Host " -----------------------------------------------------------"
+            $pageSize = 6
+            $totalPages = [math]::Ceiling($backupItems.Count / $pageSize)
+            if ($totalPages -eq 0) { $totalPages = 1 } # Failsafe for empty arrays
+            $currentPage = 1
+            $userExited = $false
+
+            while (-not $userExited) {
+                Clear-Host
+                Write-Host "=====================================================================" -ForegroundColor Cyan
+                Write-Host "  Dynamic Backup Path Blueprint" -ForegroundColor Yellow
+                Write-Host "=====================================================================" -ForegroundColor Cyan
+                Write-Host " Navigation: [←/→] Arrows | Exit Preview: [Esc]`n"
+                
+                # Calculate the array slice for the current page
+                $startIndex = ($currentPage - 1) * $pageSize
+                $endIndex = [math]::Min($startIndex + $pageSize - 1, $backupItems.Count - 1)
+                
+                if ($backupItems.Count -gt 0) {
+                    for ($i = $startIndex; $i -le $endIndex; $i++) {
+                        $item = $backupItems[$i]
+                        $status = if ($item.Enabled) { " ACTIVE " } else { " SKIPPED " }
+                        $color  = if ($item.Enabled) { "Cyan" } else { "DarkGray" }
+                        Write-Host " [$status] Target: $($item.Name)" -ForegroundColor $color
+                        Write-Host "          From:   $($item.Src)" -ForegroundColor Gray
+                        Write-Host "          To:     $destRoot\$($item.Dest)" -ForegroundColor Gray
+                        Write-Host " -----------------------------------------------------------"
+                    }
+                } else {
+                    Write-Host " No locations currently staged for backup." -ForegroundColor DarkGray
+                    Write-Host " -----------------------------------------------------------"
+                }
+
+                # Clean, isolated page indicator at the bottom
+                Write-Host "`n  [ Page $currentPage of $totalPages ] " -ForegroundColor Yellow
+                
+                # Input loop specifically for pagination
+                while ($true) {
+                    $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                    
+                    if ($key.VirtualKeyCode -eq 39) { # Right Arrow
+                        if ($currentPage -lt $totalPages) { 
+                            $currentPage++
+                            break 
+                        }
+                    }
+                    elseif ($key.VirtualKeyCode -eq 37) { # Left Arrow
+                        if ($currentPage -gt 1) { 
+                            $currentPage--
+                            break 
+                        }
+                    }
+                    elseif ($key.VirtualKeyCode -eq 27) { # Esc
+                        $userExited = $true
+                        break 
+                    }
+                }
             }
-            Write-Host "`nPress any key to return to the main menu..." -ForegroundColor Yellow
-            $null = [Console]::ReadKey($true)
             Clear-Host
         }
 

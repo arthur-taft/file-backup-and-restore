@@ -1,4 +1,4 @@
-# PowerShell User Backup Script
+﻿# PowerShell User Backup Script
 # Copyright (c) 2026 Arthur Taft
 
 $username = $env:USERNAME
@@ -162,7 +162,7 @@ function Get-BrowserProfiles {
         }
     } 
     elseif ($Browser -eq "firefox") {
-        $targetFolders = Get-ChildItem -Path $UserDataPath -Directory -Filter "*.default-release"
+        $targetFolders = Get-ChildItem -Path $UserDataPath -Directory | Where-Object {$_.Name -match "^[a-zA-Z0-9]+\.default-release" -or $_.Name -match "^[a-zA-Z0-9]+\.Profile \d+$" }
         foreach ($folder in $targetFolders) {
             $browserProfiles.Add(@{ src = $folder.FullName; dest = "Firefox\$($folder.Name)" })
         }
@@ -202,17 +202,26 @@ $destRoot = "$($chosenDrive.DriveLetter):\$username"
 
 
 # --- PHASE 2: ENVIRONMENT STAGING ---
-$rawTargets = @(
-    @{ src = "$sourceRoot\Desktop"; dest = "Desktop" },
-    @{ src = "$sourceRoot\Documents"; dest = "Documents" },
-    @{ src = "$sourceRoot\Downloads"; dest = "Downloads" },
-    @{ src = "$sourceRoot\Pictures"; dest = "Pictures" },
-    @{ src = "$sourceRoot\Videos"; dest = "Videos" },
-    @{ src = "$sourceRoot\Music"; dest = "Music" }
-)
+if ("$env:OneDrive" -match "^Southern*") {
+    $rawTargets = @(
+        @{ src = "$sourceRoot\Downloads"; dest = "Downloads" },
+        @{ src = "$sourceRoot\Pictures"; dest = "Pictures" },
+        @{ src = "$sourceRoot\Videos"; dest = "Videos" },
+        @{ src = "$sourceRoot\Music"; dest = "Music" }
+    )
+} else {
+    $rawTargets = @(
+        @{ src = "$sourceRoot\Desktop"; dest = "Desktop" },
+        @{ src = "$sourceRoot\Documents"; dest = "Documents" },
+        @{ src = "$sourceRoot\Downloads"; dest = "Downloads" },
+        @{ src = "$sourceRoot\Pictures"; dest = "Pictures" },
+        @{ src = "$sourceRoot\Videos"; dest = "Videos" },
+        @{ src = "$sourceRoot\Music"; dest = "Music" }
+    )
+}
 $rawTargets += Get-BrowserProfiles "chrome" "$env:LOCALAPPDATA\Google\Chrome\User Data"
 $rawTargets += Get-BrowserProfiles "edge" "$env:LOCALAPPDATA\Microsoft\Edge\User Data"
-$rawTargets += Get-BrowserProfiles "firefox" "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles"
+$rawTargets += Get-BrowserProfiles "firefox" "$env:APPDATA\Mozilla\Firefox\Profiles"
 
 $backupItems = [System.Collections.Generic.List[PSCustomObject]]::new()
 foreach ($target in $rawTargets) {
@@ -238,7 +247,7 @@ while ($running) {
     $sizeCheckStatus = if ($sizeCheckEnabled) { "ENABLED" } else { "DISABLED" }
     $largeFileAuditStatus = if ($largeFileAuditEnabled) { "ENABLED" } else { "DISABLED" }
     
-    $menuTitle = "USER BACKUP MENU | Target: [$($chosenDrive.DriveLetter):] $driveLabel"
+    $menuTitle = "USER BACKUP MENU | Destination: [$($chosenDrive.DriveLetter):] $driveLabel"
     $menuItems = @(
         "Start Backup Operation ($selectedCount items staged)"
         "Configure Backup Locations"
@@ -306,7 +315,7 @@ while ($running) {
             $null = Show-TuiChecklist -Title "Toggle Locations Using [Spacebar]" -Items $backupItems
         }
 
-        "Toggle Pre-Flight Large*" {
+        "Toggle Large*" {
             $largeFileAuditEnabled = -not $largeFileAuditEnabled
         }
 

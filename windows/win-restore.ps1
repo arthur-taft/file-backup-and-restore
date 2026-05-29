@@ -1,4 +1,4 @@
-# PowerShell User Restore Script
+﻿# PowerShell User Restore Script
 # Copyright (c) 2026 Arthur Taft
 
 $username = $env:USERNAME
@@ -190,7 +190,7 @@ foreach ($vol in $volumes) {
     $driveMapping[$displayText] = $vol
 }
 
-$selectedDriveText = Show-TuiMenu -Title "SELECT SOURCE BACKUP DRIVE" -Options $driveOptions
+$selectedDriveText = Show-TuiMenu -Title "SELECT SOURCE RESTORE DRIVE" -Options $driveOptions
 if ($selectedDriveText -eq "CANCEL") {
     Write-Host "Operation aborted." -ForegroundColor Red
     exit 0
@@ -207,18 +207,27 @@ if (-not (Test-Path $sourceRoot)) {
 
 
 # --- PHASE 2: ENVIRONMENT STAGING (ABSOLUTE PATHS) ---
-$rawTargets = @(
-    @{ name = "Desktop";   src = "$sourceRoot\Desktop";   dest = "$localRoot\Desktop" },
-    @{ name = "Documents"; src = "$sourceRoot\Documents"; dest = "$localRoot\Documents" },
-    @{ name = "Downloads"; src = "$sourceRoot\Downloads"; dest = "$localRoot\Downloads" },
-    @{ name = "Pictures";  src = "$sourceRoot\Pictures";  dest = "$localRoot\Pictures" },
-    @{ name = "Videos";    src = "$sourceRoot\Videos";    dest = "$localRoot\Videos" },
-    @{ name = "Music";     src = "$sourceRoot\Music";     dest = "$localRoot\Music" }
-)
+if ("$env:OneDrive" -match "^Southern*") {
+    $rawTargets = @(
+        @{ name = "Downloads"; src = "$sourceRoot\Downloads"; dest = "$localRoot\Downloads" },
+        @{ name = "Pictures";  src = "$sourceRoot\Pictures";  dest = "$localRoot\Pictures" },
+        @{ name = "Videos";    src = "$sourceRoot\Videos";    dest = "$localRoot\Videos" },
+        @{ name = "Music";     src = "$sourceRoot\Music";     dest = "$localRoot\Music" }
+    )
+} else
+    $rawTargets = @(
+        @{ name = "Desktop";   src = "$sourceRoot\Desktop";   dest = "$localRoot\Desktop" },
+        @{ name = "Documents"; src = "$sourceRoot\Documents"; dest = "$localRoot\Documents" },
+        @{ name = "Downloads"; src = "$sourceRoot\Downloads"; dest = "$localRoot\Downloads" },
+        @{ name = "Pictures";  src = "$sourceRoot\Pictures";  dest = "$localRoot\Pictures" },
+        @{ name = "Videos";    src = "$sourceRoot\Videos";    dest = "$localRoot\Videos" },
+        @{ name = "Music";     src = "$sourceRoot\Music";     dest = "$localRoot\Music" }
+    )
+}
 
 $rawTargets += Get-RestorableBrowserProfiles "chrome" $sourceRoot "$env:LOCALAPPDATA\Google\Chrome\User Data"
 $rawTargets += Get-RestorableBrowserProfiles "edge" $sourceRoot "$env:LOCALAPPDATA\Microsoft\Edge\User Data"
-$rawTargets += Get-RestorableBrowserProfiles "firefox" $sourceRoot "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles"
+$rawTargets += Get-RestorableBrowserProfiles "firefox" $sourceRoot "$env:APPDATA\Mozilla\Firefox\Profiles"
 
 $backupItems = [System.Collections.Generic.List[PSCustomObject]]::new()
 foreach ($target in $rawTargets) {
@@ -309,7 +318,7 @@ while ($running) {
             $null = Show-TuiChecklist -Title "Toggle Locations Using [Spacebar]" -Items $backupItems
         }
 
-        "Toggle Pre-Flight Large*" {
+        "Toggle Large*" {
             $largeFileAuditEnabled = -not $largeFileAuditEnabled
         }
 
